@@ -1,0 +1,93 @@
+---
+title: "a4_task1_Toigo_Katelyn"
+author: "Katelyn Toigo"
+date: "2/27/2022"
+output:
+  html_document:
+    code_folding: hide
+---
+
+### Overview
+This script uses R to conduct spatial data vizualization of 2008 California oil spill incidents.
+
+Two data layers are combined, a California county layer and a CA DFW oil spill incident tracking dataset. The oil spill dataset is a vector layer.
+
+**Data citations:** 
+CA County layer dataset is provided in ESM244.
+
+Cal EMA and DFG-OSPR (2009). Oil Spill Incident Tracking [ds394]. https://map.dfg.ca.gov/metadata/ds0394.html
+
+### Load necessary packages
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(tidyverse)
+library(here)
+library(broom)
+library(sf)
+library(tmap)
+```
+
+### Read in data and check/update projections
+```{r}
+# Read in the CA county data (TIGER shapefile):
+ca_counties_sf <- read_sf(here("data/counties"), layer = "CA_Counties_TIGER2016") %>% 
+  janitor::clean_names() %>% 
+  select(name)
+
+# Check the projection
+# st_crs(ca_counties_sf) # WGS 84 / Pseudo-Mercator, EPSG: 3857
+
+# Read in the oil spill incident layer: 
+oil_spill_sf <- read_sf(here("data/oil_spill_data"), layer = "ds394") %>% 
+  janitor::clean_names()
+
+# Check the projection:
+# st_crs(oil_spill_sf) # NAD83 / California Albers, EPSG: 3310
+
+# Make both have the same projection = NAD83 / California Albers, EPSG: 3310
+ca_counties_sf <- st_transform(ca_counties_sf, st_crs(oil_spill_sf))
+```
+
+```{r}
+### Plot the data for quick visualization
+# Make a quick ggplot:
+# ggplot() +
+#   geom_sf(data = ca_counties_sf) +
+#   geom_sf(data = oil_spill_sf)
+```
+
+### Make an exploratory interactive map in tmap showing the location of oil spill events
+```{r}
+tmap_mode("view")
+
+tm_shape(oil_spill_sf) +
+  tm_dots("red", palette = 'Blues')
+```
+
+**Figure 1.** Interactive overview of datapoints showing oil spill incidents in 2008.
+
+### Make a finalized static choropleth map: fill color for each county depends on the count of inland oil spill events by county for the 2008 oil spill data
+```{r}
+# Join county dataset with oil dataset
+county_oil_sf <- ca_counties_sf %>% 
+  st_join(oil_spill_sf)
+
+#head(county_oil_sf)
+
+# Find counts of incidents per county
+oil_counts_sf <- county_oil_sf %>% 
+  filter(inlandmari == "Inland") %>% 
+  group_by(name) %>%
+  summarize(number = n()) # dont want to just drop NA or else the county will disappear too, so do what is done here. Where id = NA those will be replaced with 0. Count() would count every row even those with NAs, so just do group_by() and summarize().
+
+#head(oil_counts_sf)
+
+# Chloropleth map
+ggplot(data = oil_counts_sf) +
+  geom_sf(aes(fill = number), color = "white", size = 0.1) +
+  scale_fill_gradientn(colors = c("lightgray","orange","red")) +
+  theme_minimal() +
+  labs(fill = "Number of oil incidents")
+```
+
+**Figure 2.** Choropleth map showing the count of inland oil spill incidents in 2008.
